@@ -75,8 +75,28 @@ impl ServerObj{     // can extend when more options are available
             },
             None => HttpResponse::GET
         };
+
+        let resource = match data_request.get(1) {
+            Some(&e) => {
+                match e {
+                    "/" => (ResCode::Ok, e),
+                    e if e.contains("..") => (ResCode::NotFound, "servercontent/404.html"),
+                    e if e.contains("~") => (ResCode::NotFound, "servercontent/404.html"),
+                    _ => (ResCode::Ok, "servercontent/index.html")
+                }
+            },
+            None => (ResCode::NotFound, "servercontent/404.html")
+        };
         // To-do: Expand parse connection to allow for multiple types of HTTP requests
     }
+}
+
+enum ResCode {
+    Ok,
+    MovedPermanently,
+    Unauthorized,
+    Forbidden,
+    NotFound
 }
 
 fn read_file_string(file_path: String) -> String {
