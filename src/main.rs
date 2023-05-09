@@ -1,11 +1,16 @@
 use std::io::{Read, BufReader, BufRead};
 use std::fs::File;
 use std::fs;
+use std::net::TcpListener;
+use std::net::TcpStream;
+use std::io::prelude::*;
 
 fn main() {
-    let config_values = load_config_file();
-    let server_ip = &config_values[0];          // There's likely a more elegant solution
-    let server_port = &config_values[1];        // that I'm missing.
+    let server = ServerObj::from_config();
+    for stream in server.listener.incoming(){
+        let stream = stream.expect("TCP Listener needs to establish connection");
+        ServerObj::parse_connection(stream)
+    }
 }
 
 fn load_config_file() -> Vec<String> {
@@ -26,6 +31,53 @@ fn load_config_file() -> Vec<String> {
 
 }
 
+struct ServerObj {
+    address: String,
+    port: String,
+    listener: TcpListener
+}
+
+enum HttpResponse {
+    GET,
+    POST,
+    PUT,
+    DELETE,
+    PATCH
+}
+
+impl ServerObj{     // can extend when more options are available
+    fn from_config() -> ServerObj{
+        let config_vals = load_config_file();
+        ServerObj{
+            address: config_vals[0].clone(),
+            port: config_vals[1].clone(),
+            listener: TcpListener::bind(format!("{}:{}",config_vals[0],config_vals[1]))
+                .expect("Needs to load IP to bind, maybe out of network scope?")
+        }
+    }
+
+    fn parse_connection(mut stream: TcpStream) {
+        let mut data_buffer: [u8;1024] = [0;1024];
+        stream.read(&mut data_buffer).expect("Failed reading TCP?");
+        let data_string = String::from_utf8_lossy(&data_buffer[..]);
+        let data_request: Vec<&str> = data_string.split(" ").collect();
+        let http_type = match data_request.get(0) {
+            Some(e) => {
+                let response_type = match e.to_uppercase().as_str() {
+                    "GET" => HttpResponse::GET,
+                    "POST" => HttpResponse::POST,
+                    "PUT" => HttpResponse::PUT,
+                    "DELETE" => HttpResponse::DELETE,
+                    "PATCH" => HttpResponse::PATCH,
+                    _ => HttpResponse::GET
+                };
+                response_type
+            },
+            None => HttpResponse::GET
+        };
+        // To-do: Expand parse connection to allow for multiple types of HTTP requests
+    }
+}
 
 fn read_file_string(file_path: String) -> String {
     let data = match fs::read_to_string(file_path){
