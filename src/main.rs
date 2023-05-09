@@ -80,12 +80,12 @@ impl ServerObj{     // can extend when more options are available
             Some(&e) => {
                 match e {
                     "/" => (ResCode::Ok, e),
-                    e if e.contains("..") => (ResCode::NotFound, "servercontent/404.html"),
-                    e if e.contains("~") => (ResCode::NotFound, "servercontent/404.html"),
-                    _ => (ResCode::Ok, "servercontent/index.html")
+                    e if e.contains("..") => (ResCode::NotFound, "server_content/404.html"),
+                    e if e.contains("~") => (ResCode::NotFound, "server_content/404.html"),
+                    _ => (ResCode::Ok, "server_content/index.html")
                 }
             },
-            None => (ResCode::NotFound, "servercontent/404.html")
+            None => (ResCode::NotFound, "server_content/404.html")
         };
         // To-do: Expand parse connection to allow for multiple types of HTTP requests
     }
