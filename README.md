@@ -9,17 +9,15 @@ If there isn't a file, or the request contains relational searching characters s
 
 ###File Structuring:
 The file structure for the server should be set up like:
-- server folder
++ server folder
   - Executable
   - config.cfg
-  - server_content
+  + server_content
     - servers payloads (.html, .css, .js, .etc)
 
 During dev it would be:
 - src
-- server folder
++ server folder
   - config.cfg
-  - server_content
+  + server_content
     - server payloads
-
-
