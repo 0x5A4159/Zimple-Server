@@ -1,9 +1,11 @@
+use std::borrow::Borrow;
 use std::io::{Read, BufReader, BufRead};
 use std::fs::File;
 use std::fs;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::io::prelude::*;
+use std::path::PathBuf;
 
 fn main() {
     let server = ServerObj::from_config();
@@ -79,15 +81,30 @@ impl ServerObj{     // can extend when more options are available
         let resource = match data_request.get(1) {
             Some(&e) => {
                 match e {
-                    "/" => (ResCode::Ok, e),
-                    e if e.contains("..") => (ResCode::NotFound, "server_content/404.html"),
-                    e if e.contains("~") => (ResCode::NotFound, "server_content/404.html"),
-                    _ => (ResCode::Ok, "server_content/index.html")
+                    "/" => (ResCode::Ok, "./server/server_content/index.html".to_string()),   // current directory search, hopefully stops root searches
+                    e if e.contains("..") => (ResCode::NotFound, "./server/server_content/404.html".to_string()),
+                    e if e.contains("~") => (ResCode::NotFound, "./server/server_content/404.html".to_string()),
+                    _ => (ResCode::Ok, format!("./server/server_content{}",e))  // ^ attempt to block relational file searching
                 }
             },
-            None => (ResCode::NotFound, "server_content/404.html")
+            None => (ResCode::NotFound, "./server/server_content/404.html".to_string())
         };
-        // To-do: Expand parse connection to allow for multiple types of HTTP requests
+        let raw_resource_bytes = read_file_bytes(resource.1);
+
+        let raw_http_response = match http_type{
+            HttpResponse::GET => {
+                let mut raw_http: Vec<u8> = Vec::from(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", &raw_resource_bytes.capacity()));
+                raw_http.extend(raw_resource_bytes);
+                raw_http
+            }
+            _ => {
+                // Implement other HTTP request types
+                vec!(4,0,4) // temporary placeholder
+            }
+        };
+
+        stream.write(&raw_http_response).unwrap();
+        stream.flush().unwrap();
     }
 }
 
