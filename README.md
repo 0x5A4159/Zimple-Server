@@ -3,11 +3,11 @@
 **Local/Private HTTP server framework built in rust.**
 Created as a way to learn the HTTP structure.
 
-###Usage:
+### Usage:
 In its current iteration, Zimple serves based on get requests and loads the file requested.
 If there isn't a file, or the request contains relational searching characters such as '..' or '~' it will return the 404.html page by default.
 
-###File Structuring:
+### File Structuring:
 The file structure for the server should be set up like:
 + server folder
   - Executable
