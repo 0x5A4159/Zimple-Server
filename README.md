@@ -22,10 +22,10 @@ During dev it would be:
   + server_content
     - server payloads
 
-### To-do:
-[] HTTPS
-[x] GET
-[] POST
-[] PUT
-[] DELETE
-[] PATCH
++ To-do:
+  - [] HTTPS
+  - [x] GET
+  - [] POST
+  - [] PUT
+  - [] DELETE
+  - [] PATCH
