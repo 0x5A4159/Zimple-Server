@@ -21,3 +21,11 @@ During dev it would be:
   - config.cfg
   + server_content
     - server payloads
+
+### To-do:
+[] HTTPS
+[x] GET
+[] POST
+[] PUT
+[] DELETE
+[] PATCH
