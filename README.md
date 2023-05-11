@@ -29,3 +29,5 @@ During dev it would be:
   - [] PUT
   - [] DELETE
   - [] PATCH
+  - [] Frequent request memory integration
+  - [] User Sign-in
