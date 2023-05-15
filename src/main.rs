@@ -1,17 +1,15 @@
-use std::borrow::Borrow;
 use std::io::{Read, BufReader, BufRead};
 use std::fs::File;
 use std::fs;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::io::prelude::*;
-use std::path::PathBuf;
 
 fn main() {
     let server = ServerObj::from_config();
     for stream in server.listener.incoming(){
         let stream = stream.expect("TCP Listener needs to establish connection");
-        ServerObj::parse_connection(stream)
+        parse_connection(stream)
     }
 }
 
@@ -33,12 +31,61 @@ fn load_config_file() -> Vec<String> {
 
 }
 
+    fn parse_connection(mut stream: TcpStream) {
+        let mut data_buffer: [u8;1024] = [0;1024];
+        stream.read(&mut data_buffer).unwrap();
+        let data_string = String::from_utf8_lossy(&data_buffer[..]);
+        let data_request: Vec<&str> = data_string.split(" ").collect();
+        // originally i was considering just getting a slice of the first 3 bytes of the buffer
+        // since all of the response headers are distinct, but if i'm going to split by space anyway
+        // for the resource information this should be about as efficient.
+
+        let http_type = match data_request.get(0) {
+            Some(e) => {
+                match e.to_uppercase().as_str() {
+                    "GET" => HttpResponse::GET,
+                    "POST" => HttpResponse::POST,
+                    "PUT" => HttpResponse::PUT,
+                    "DELETE" => HttpResponse::DELETE,
+                    "PATCH" => HttpResponse::PATCH,
+                    _ => HttpResponse::GET // just in case all else fails this should return 404 error
+                }
+            },
+            None => HttpResponse::GET
+        };
+
+        let resource = match data_request.get(1) {
+            Some(&e) => {
+                match e {
+                    "/" => "./server/server_content/index.html".to_string(),
+                    e if e.contains("..") => "./server/server_content/404.html".to_string(),
+                    e if e.contains("~") => "./server/server_content/404.html".to_string(),
+                    _ => format!("./server/server_content{}", e)
+                }
+            }
+            None => "./server/server_content/404.html".to_string()
+        };
+
+        let response_info = http_type.collect_information(resource);
+
+        let mut raw_http_response = Vec::from(format!("HTTP/1.1 {:?}\r\nContent-Length: {}\r\n\r\n",
+                                                      &response_info.response,
+                                                      &response_info.length));
+
+        raw_http_response.extend(&response_info.content);
+
+        stream.write(&raw_http_response).unwrap();
+        stream.flush().unwrap();
+    }
+
+
 struct ServerObj {
     address: String,
     port: String,
     listener: TcpListener
 }
 
+#[derive(PartialEq)] // need this to compare enum for impl
 enum HttpResponse {
     GET,
     POST,
@@ -47,67 +94,49 @@ enum HttpResponse {
     PATCH
 }
 
-impl ServerObj{     // can extend when more options are available
-    fn from_config() -> ServerObj{
-        let config_vals = load_config_file();
-        ServerObj{
-            address: config_vals[0].clone(),
-            port: config_vals[1].clone(),
-            listener: TcpListener::bind(format!("{}:{}",config_vals[0],config_vals[1]))
-                .expect("Needs to load IP to bind, maybe out of network scope?")
-        }
-    }
+struct GetResponse {
+    response: ResCode,
+    length: usize,
+    content: Vec<u8>
+}
 
-    fn parse_connection(mut stream: TcpStream) {
-        let mut data_buffer: [u8;1024] = [0;1024];
-        stream.read(&mut data_buffer).expect("Failed reading TCP?");
-        let data_string = String::from_utf8_lossy(&data_buffer[..]);
-        let data_request: Vec<&str> = data_string.split(" ").collect();
-        let http_type = match data_request.get(0) {
-            Some(e) => {
-                let response_type = match e.to_uppercase().as_str() {
-                    "GET" => HttpResponse::GET,
-                    "POST" => HttpResponse::POST,
-                    "PUT" => HttpResponse::PUT,
-                    "DELETE" => HttpResponse::DELETE,
-                    "PATCH" => HttpResponse::PATCH,
-                    _ => HttpResponse::GET
-                };
-                response_type
-            },
-            None => HttpResponse::GET
-        };
-
-        let resource = match data_request.get(1) {
-            Some(&e) => {
-                match e {
-                    "/" => (ResCode::Ok, "./server/server_content/index.html".to_string()),   // current directory search, hopefully stops root searches
-                    e if e.contains("..") => (ResCode::NotFound, "./server/server_content/404.html".to_string()),
-                    e if e.contains("~") => (ResCode::NotFound, "./server/server_content/404.html".to_string()),
-                    _ => (ResCode::Ok, format!("./server/server_content{}",e))  // ^ attempt to block relational file searching
-                }
-            },
-            None => (ResCode::NotFound, "./server/server_content/404.html".to_string())
-        };
-        let raw_resource_bytes = read_file_bytes(resource.1);
-
-        let raw_http_response = match http_type{
+impl HttpResponse {     // trying to break up the logic chunks here so it isn't as cluttered
+    fn collect_information(self, resource: String) -> GetResponse {
+        match self {
             HttpResponse::GET => {
-                let mut raw_http: Vec<u8> = Vec::from(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", &raw_resource_bytes.capacity()));
-                raw_http.extend(raw_resource_bytes);
-                raw_http
+                let file_bytes = read_file_bytes(resource);
+                GetResponse{
+                    response: ResCode::Ok,
+                    length: file_bytes.len(),
+                    content: file_bytes
+                }
             }
             _ => {
-                // Implement other HTTP request types
-                vec!(4,0,4) // temporary placeholder
+                GetResponse{
+                    response:ResCode::NotFound,
+                    length: 200_usize,
+                    content: Vec::from("<h1>404 Error</h1><p>Not Found</p>")
+                }
+                // place holder so i can test GET functionality, will need to implement functions for all response types
             }
-        };
-
-        stream.write(&raw_http_response).unwrap();
-        stream.flush().unwrap();
+        }
     }
 }
 
+impl ServerObj {
+    // can extend when more options are available
+    fn from_config() -> ServerObj {
+        let config_vals = load_config_file();
+        ServerObj {
+            address: config_vals[0].clone(),
+            port: config_vals[1].clone(),
+            listener: TcpListener::bind(format!("{}:{}", config_vals[0], config_vals[1]))
+                .expect("Needs to load IP to bind, maybe out of network scope?")
+        }
+    }
+}
+
+#[derive(Debug)]
 enum ResCode {
     Ok,
     MovedPermanently,
