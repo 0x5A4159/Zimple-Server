@@ -6,6 +6,11 @@ use std::net::TcpStream;
 use std::io::prelude::*;
 
 fn main() {
+    dbg!(Vec::from("GET"));
+    dbg!(Vec::from("POS"));
+    dbg!(Vec::from("PUT"));
+    dbg!(Vec::from("DEL"));
+    dbg!(Vec::from("PAT"));
     let server = ServerObj::from_config();
     for stream in server.listener.incoming(){
         let stream = stream.expect("TCP Listener needs to establish connection");
@@ -32,26 +37,23 @@ fn load_config_file() -> Vec<String> {
 }
 
     fn parse_connection(mut stream: TcpStream) {
+        let mut header_bytes: [u8;3] = [0;3];
+        stream.read(&mut header_bytes).unwrap();
+
         let mut data_buffer: [u8;1024] = [0;1024];
         stream.read(&mut data_buffer).unwrap();
         let data_string = String::from_utf8_lossy(&data_buffer[..]);
         let data_request: Vec<&str> = data_string.split(" ").collect();
-        // originally i was considering just getting a slice of the first 3 bytes of the buffer
-        // since all of the response headers are distinct, but if i'm going to split by space anyway
-        // for the resource information this should be about as efficient.
+        // will probably need to redo this to use a selection of the first 3 bytes of buffer
+        // for implementing POST PUT DELETE PATH which may rely on \r\n separation
 
-        let http_type = match data_request.get(0) {
-            Some(e) => {
-                match e.to_uppercase().as_str() {
-                    "GET" => HttpResponse::GET,
-                    "POST" => HttpResponse::POST,
-                    "PUT" => HttpResponse::PUT,
-                    "DELETE" => HttpResponse::DELETE,
-                    "PATCH" => HttpResponse::PATCH,
-                    _ => HttpResponse::GET // just in case all else fails this should return 404 error
-                }
-            },
-            None => HttpResponse::GET
+        let http_type = match header_bytes {
+            [71,69,84] => HttpResponse::GET,
+            [80,79,83] => HttpResponse::POST,
+            [80,85,84] => HttpResponse::PUT,
+            [68,69,76] => HttpResponse::DELETE,
+            [80,65,84] => HttpResponse::PATCH,
+            _ => HttpResponse::GET
         };
 
         let resource = match data_request.get(1) {
@@ -64,7 +66,8 @@ fn load_config_file() -> Vec<String> {
                 }
             }
             None => "./server/server_content/404.html".to_string()
-        };
+        };  // for now this works, but i will probably need to push this functionality to the GET impl
+            // since PUT/POST don't use this
 
         let response_info = http_type.collect_information(resource);
 
