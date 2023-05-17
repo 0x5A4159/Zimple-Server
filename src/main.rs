@@ -16,10 +16,6 @@ fn main() {
 
 fn parse_connection(mut stream: TcpStream,server_info: &ServerObj) {
     let header_bytes = stream_reader(&stream,3); // request type (first 3 letters)
-    let data_buffer = stream_reader(&stream,server_info.header_size);
-    // header_size set in config, maybe need elastic approach for POST/PUT ?
-
-    let data_string = String::from_utf8_lossy(&data_buffer[..]);
 
     let http_type = match header_bytes[..] {
         [71,69,84] => HttpResponse::GET,
@@ -30,7 +26,7 @@ fn parse_connection(mut stream: TcpStream,server_info: &ServerObj) {
         _ => HttpResponse::GET
     };
 
-    let response_info = http_type.collect_information(data_string);
+    let response_info = http_type.collect_information(&mut stream, server_info);
 
     let mut raw_http_response = Vec::from(format!("HTTP/1.1 {:?}\r\nContent-Length: {}\r\n\r\n",
                                                   &response_info.response,
@@ -88,9 +84,12 @@ struct GetResponse {
 }
 
 impl HttpResponse {     // trying to break up the logic chunks here so it isn't as cluttered
-    fn collect_information(self, resource: std::borrow::Cow<str>) -> GetResponse {
+    fn collect_information(self, stream: &mut TcpStream,server_info: &ServerObj) -> GetResponse {
         match self {
             HttpResponse::GET => {
+                let data_buffer = stream_reader(&stream,server_info.header_size);
+                let resource = String::from_utf8_lossy(&data_buffer[..]);
+
                 let data_request: Vec<&str> = resource.split(" ").collect();
 
                 let resource_path = match data_request.get(1) {
@@ -112,6 +111,40 @@ impl HttpResponse {     // trying to break up the logic chunks here so it isn't 
                     content: file_bytes
                 }
             }
+            HttpResponse::POST => {
+                let mut data_buffer = stream_reader(&stream,server_info.header_size);
+                let mut resource = String::from_utf8_lossy(&data_buffer[..]);
+
+                let mut content_length = "0";
+
+                for chunk in resource.split("\n") {
+                    if chunk.to_lowercase().contains("content-length:") {
+                        content_length = chunk;
+                    }
+                };
+
+                let content_length_value = content_length.split(":")
+                    .collect::<Vec<_>>()
+                    .get(1)
+                    .unwrap_or(&"0")
+                    .parse()
+                    .unwrap_or(0);
+
+                data_buffer.extend(stream_reader(&stream,content_length_value));
+
+                // original 1024 array: [a,b,c...] + remaining content length = [a,b,c...x,y,z,0,0] (trailing zero should be fine)
+                // This should be a robust enough solution for variable content length, and the initial 1024 byte array should capture
+                // a good portion of headers, at least enough to get content length to extend array
+
+                resource = String::from_utf8_lossy(&data_buffer[..]);
+
+
+                GetResponse{        // place holder response
+                    response:ResCode::Ok,
+                    length: 200_usize,
+                    content: Vec::from("<h1>POST received</h1>")
+                }
+            },
             _ => {
                 GetResponse{
                     response:ResCode::NotFound,
