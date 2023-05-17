@@ -57,8 +57,8 @@ fn load_config_file() -> Vec<String> {
         .collect::<Vec<&str>>()
         .get(1)
         .unwrap()
-        .to_string()
-    ).collect()
+        .to_string())
+        .collect()
 }
 
 struct ServerObj {
