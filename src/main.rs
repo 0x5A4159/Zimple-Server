@@ -20,33 +20,17 @@ fn parse_connection(mut stream: TcpStream,server_info: &ServerObj) {
     // header_size set in config, maybe need elastic approach for POST/PUT ?
 
     let data_string = String::from_utf8_lossy(&data_buffer[..]);
-    let data_request: Vec<&str> = data_string.split(" ").collect();
-    // will probably need to redo this to use a selection of the first 3 bytes of buffer
-    // for implementing POST PUT DELETE PATH which may rely on \r\n separation
 
     let http_type = match header_bytes[..] {
         [71,69,84] => HttpResponse::GET,
         [80,79,83] => HttpResponse::POST,
-        [80,85,84] => HttpResponse::PUT,        // UTF8 vectors of the first 3 letters of http protocols
+        [80,85,84] => HttpResponse::PUT,    // UTF8 vectors of the first 3 letters of http protocols
         [68,69,76] => HttpResponse::DELETE,
         [80,65,84] => HttpResponse::PATCH,
         _ => HttpResponse::GET
     };
 
-    let resource = match data_request.get(1) {
-        Some(&e) => {
-            match e {
-                "/" => "./server/server_content/index.html".to_string(),
-                e if e.contains("..") => "./server/server_content/404.html".to_string(),
-                e if e.contains("~") => "./server/server_content/404.html".to_string(),
-                _ => format!("./server/server_content{}", e)
-            }
-        }
-        None => "./server/server_content/404.html".to_string()
-    };  // for now this works, but i will probably need to push this functionality to the GET impl
-        // since PUT/POST don't use this
-
-    let response_info = http_type.collect_information(resource);
+    let response_info = http_type.collect_information(data_string);
 
     let mut raw_http_response = Vec::from(format!("HTTP/1.1 {:?}\r\nContent-Length: {}\r\n\r\n",
                                                   &response_info.response,
@@ -104,10 +88,24 @@ struct GetResponse {
 }
 
 impl HttpResponse {     // trying to break up the logic chunks here so it isn't as cluttered
-    fn collect_information(self, resource: String) -> GetResponse {
+    fn collect_information(self, resource: std::borrow::Cow<str>) -> GetResponse {
         match self {
             HttpResponse::GET => {
-                let file_bytes = read_file_bytes(resource);
+                let data_request: Vec<&str> = resource.split(" ").collect();
+
+                let resource_path = match data_request.get(1) {
+                    Some(&e) => {
+                        match e {
+                            "/" => "./server/server_content/index.html".to_string(),
+                            e if e.contains("..") => "./server/server_content/404.html".to_string(),
+                            e if e.contains("~") => "./server/server_content/404.html".to_string(),
+                            _ => format!("./server/server_content{}", e)
+                        }
+                    }
+                    None => "./server/server_content/404.html".to_string()
+                };  // may need tokenization for fields
+
+                let file_bytes = read_file_bytes(resource_path);
                 GetResponse{
                     response: ResCode::Ok,
                     length: file_bytes.len(),
