@@ -138,12 +138,15 @@ impl HttpResponse {     // trying to break up the logic chunks here so it isn't 
 
                 resource = String::from_utf8_lossy(&data_buffer[..]);
 
+                // To-do: allow document changes from POST (potentially authorize with GET keys?
+                // I mean ideally we wouldn't want to be making post/put requests over non ssl/tsl
 
                 GetResponse{        // place holder response
                     response:ResCode::Ok,
                     length: 200_usize,
                     content: Vec::from("<h1>POST received</h1>")
                 }
+
             },
             _ => {
                 GetResponse{
