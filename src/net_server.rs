@@ -29,8 +29,9 @@ fn parse_connection(mut stream: TcpStream,server_info: &ServerObj) {
 
     let response_info = http_type.collect_information(&mut stream, server_info);
 
-    let mut raw_http_response = Vec::from(format!("HTTP/1.1 {:?}\r\nContent-Length: {}\r\n\r\n",
-                                                  &response_info.response,
+
+    let mut raw_http_response = Vec::from(format!("HTTP/1.1 {}\r\nContent-Length: {}\r\n\r\n",
+                                                  &response_info.response.make(),
                                                   &response_info.length));
 
     raw_http_response.extend(&response_info.content);
@@ -78,6 +79,8 @@ enum HttpResponse {
     PATCH
 }
 
+
+#[derive(Debug)]
 struct GetResponse {
     response: ResCode,
     length: usize,
@@ -106,11 +109,7 @@ impl HttpResponse {     // trying to break up the logic chunks here so it isn't 
                 };  // may need tokenization for fields
 
                 let file_bytes = read_file_bytes(resource_path);
-                GetResponse{
-                    response: ResCode::Ok,
-                    length: file_bytes.len(),
-                    content: file_bytes
-                }
+                file_bytes
             }
             HttpResponse::POST => {
                 let mut data_buffer = stream_reader(&stream,server_info.header_size);
@@ -151,9 +150,9 @@ impl HttpResponse {     // trying to break up the logic chunks here so it isn't 
             },
             _ => {
                 GetResponse{
-                    response:ResCode::NotFound,
-                    length: 200_usize,
-                    content: Vec::from("<h1>404 Error</h1><p>Not Found</p>")
+                    response:ResCode::NotImplemented,
+                    length: 40_usize,
+                    content: Vec::from("<h1>501 Error</h1><p>Not Implemented</p>")
                 }
                 // place holder so i can test GET functionality, will need to implement functions for all response types
             }
@@ -181,21 +180,47 @@ enum ResCode {
     MovedPermanently,
     Unauthorized,
     Forbidden,
-    NotFound
+    NotFound,
+    NotImplemented
 }
 
-fn read_file_bytes(file_path: String) -> Vec<u8>{
-    let file = match File::open(file_path) {
-        Ok(e) => e,
-        Err(_) => File::open("server/server_content/404.html")
-            .expect("Default file should be in server_content for backup on bad request")
-            // Err can return 404.html instead of empty default file
-        };
+impl ResCode {
+    fn make(&self) -> String {
+        match self {
+            ResCode::Ok => {String::from("200")},
+            ResCode::MovedPermanently => {String::from("301")},
+            ResCode::Unauthorized => {String::from("401")},
+            ResCode::Forbidden => {String::from("403")},
+            ResCode::NotFound => {String::from("404")},
+            ResCode::NotImplemented => {String::from("501")}
+        }
+    }
+}
 
+fn read_file_bytes(file_path: String) -> GetResponse {
+    let mut found: bool = true;
+
+    let file: File = {File::open(file_path)
+        .unwrap_or_else(|_| {
+            found = false;
+            File::open("./server/server_content/404.html").unwrap()
+        })};
+
+    let page_found: ResCode = match found {
+        true => {
+            ResCode::Ok
+        }
+        false => {
+            ResCode::NotFound
+        }
+    };
     let mut buffer = Vec::new();
     let mut reader = BufReader::new(file);
 
     reader.read_to_end(&mut buffer).unwrap();
-
-    buffer
+    GetResponse {
+        response: page_found,
+        length: buffer.len(),
+        content: buffer
+    }
 }
