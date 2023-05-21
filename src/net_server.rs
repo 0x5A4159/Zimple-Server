@@ -87,6 +87,17 @@ struct GetResponse {
     content: Vec<u8>
 }
 
+fn simple_find (resource: &std::borrow::Cow<str>, to_find: &str) -> String {
+    let mut return_obj = String::new();     // This is a low effort finder to quickly return a line
+    for chunk in resource.split("\n") { // that contains some value we're looking for
+        if chunk.to_lowercase().contains(to_find){
+            return_obj = chunk.to_string().to_lowercase();
+            break;      // there's probably a much more efficient way to do this.
+        }
+    }
+    return_obj
+}
+
 impl HttpResponse {     // trying to break up the logic chunks here so it isn't as cluttered
     fn collect_information(self, stream: &mut TcpStream,server_info: &ServerObj) -> GetResponse {
         match self {
@@ -112,39 +123,60 @@ impl HttpResponse {     // trying to break up the logic chunks here so it isn't 
                 file_bytes
             }
             HttpResponse::POST => {
-                let mut data_buffer = stream_reader(&stream,server_info.header_size);
-                let mut resource = String::from_utf8_lossy(&data_buffer[..]);
+                let mut data_buffer = stream_reader(&stream,server_info.header_size); // just capturing 1024 bytes to hopefully catch content-size
+                let resource = String::from_utf8_lossy(&mut data_buffer[..]); // read bytes as string
 
-                let mut content_length = "0";
+                let content_length = simple_find(&resource,"content-length:");
 
-                for chunk in resource.split("\n") {
-                    if chunk.to_lowercase().contains("content-length:") {
-                        content_length = chunk;
-                    }
-                };
+                let accept_type = simple_find(&resource,"accept:"); // can do simple matching based on something like
+                                                                                 // match { "accept:application/json" => {}. "accept:text/html" => {} } etc.
+                let content_type = simple_find(&resource, "content-type:");
 
                 let content_length_value = content_length.split(":")
                     .collect::<Vec<_>>()
-                    .get(1)
-                    .unwrap_or(&"0")
+                    .get(1)     // should return right-hand side of content_length to give us string of content length declaration
+                    .unwrap_or(&"0") // default should anything go wrong, no extensibility
                     .parse()
-                    .unwrap_or(0);
+                    .unwrap_or(0); // another default should anything go wrong somehow.
 
-                data_buffer.extend(stream_reader(&stream,content_length_value));
-
+                data_buffer.extend(stream_reader(&stream,content_length_value)); // reads the remaining size of the request and extends the data buffer
                 // original 1024 array: [a,b,c...] + remaining content length = [a,b,c...x,y,z,0,0] (trailing zero should be fine)
                 // This should be a robust enough solution for variable content length, and the initial 1024 byte array should capture
                 // a good portion of headers, at least enough to get content length to extend array
 
-                resource = String::from_utf8_lossy(&data_buffer[..]);
+                let resource = String::from_utf8_lossy(&data_buffer[..]); // recreate string array to include extended byte array
 
-                // To-do: allow document changes from POST (potentially authorize with GET keys?
-                // I mean ideally we wouldn't want to be making post/put requests over non ssl/tsl
+                let body_content: Vec<&str> = resource.split("\r\n\r\n").collect();
+
+                let body_content = match body_content.get(1){
+                    Some(e) => e.to_string(),
+                    None => "".to_string()
+                };  // gets the body of the post by getting the right-hand split of the double linebreak in requests.
+
+                let context = match content_type.replace("\n","").as_str() {
+                    "content-type: application/x-www-form-urlencoded" => {
+                        // todo
+                    },
+                    "content-type: application/json" => {
+                        // todo
+                    },
+                    "content-type: application/xml" => {
+                        // todo
+                    },
+                    "content-type: text/html; charset=utf-8" => {
+                        // todo
+                    }
+                    _ => {
+                        // default to content-type: text/html
+                    }
+                };
+
+                let mut final_response = "".to_string(); // this can be dictated by accept type and data fed to it, be it json or txt or whatever
 
                 GetResponse{        // place holder response
                     response:ResCode::Ok,
                     length: 200_usize,
-                    content: Vec::from("<h1>POST received</h1>")
+                    content: Vec::from(final_response)
                 }
 
             },
