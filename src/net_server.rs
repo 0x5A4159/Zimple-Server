@@ -3,6 +3,7 @@ use std::fs::File;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::io::prelude::*;
+mod page_counter;
 
 pub fn start_server() {
     let server = ServerObj::from_config();
@@ -28,7 +29,6 @@ fn parse_connection(mut stream: TcpStream,server_info: &ServerObj) {
     };
 
     let response_info = http_type.collect_information(&mut stream, server_info);
-
 
     let mut raw_http_response = Vec::from(format!("HTTP/1.1 {}\r\nContent-Length: {}\r\n\r\n",
                                                   &response_info.response.make(),
@@ -67,7 +67,8 @@ struct ServerObj {
     address: String,
     port: String,
     listener: TcpListener,
-    header_size: usize
+    header_size: usize,
+    load_counter: bool
 }
 
 #[derive(PartialEq)] // need this to compare enum for impl
@@ -118,6 +119,13 @@ impl HttpResponse {     // trying to break up the logic chunks here so it isn't 
                     }
                     None => "./server/server_content/404.html".to_string()
                 };  // may need tokenization for fields
+
+                if server_info.load_counter {
+                    // todo: add counter functionality
+                    // potentially doing so by getting the resource name and storing as json to the file, can use
+                    // serde to serialize and deserialize it for math operations.
+                    page_counter::incr_count(&resource_path);
+                }
 
                 let file_bytes = read_file_bytes(resource_path);
                 file_bytes
@@ -201,7 +209,12 @@ impl ServerObj {
             port: config_vals[1].clone(),
             listener: TcpListener::bind(format!("{}:{}", config_vals[0], config_vals[1]))
                 .expect("Needs to load IP to bind, maybe out of network scope?"),
-            header_size: config_vals[2].clone().parse().expect("Config value header_size should be numerical")
+            header_size: config_vals[2].clone().parse().expect("Config value header_size should be numerical"),
+            load_counter: match config_vals[3].clone().as_str() {
+                "F" => false,
+                "T" => true,
+                _ => false
+            }
         }
     }
 }
